@@ -29,4 +29,25 @@ export class Block {
       .update(stableStringify(blockContent))
       .digest("hex");
   }
+
+  mineBlock(difficulty) {
+    if (
+      !Number.isInteger(difficulty) ||
+      difficulty < 1 ||
+      difficulty > 6
+    ) {
+      throw new RangeError(
+        "Mining difficulty must be an integer between 1 and 6"
+      );
+    }
+
+    const target = "0".repeat(difficulty);
+
+    while (!this.hash.startsWith(target)) {
+      this.nonce += 1;
+      this.hash = this.calculateHash();
+    }
+
+    return this;
+  }
 }

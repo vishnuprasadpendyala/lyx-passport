@@ -125,3 +125,79 @@ test("ignores object key insertion order when hashing", () => {
 
   assert.equal(first.hash, second.hash);
 });
+
+test("mines a block at difficulty 1", () => {
+  const block = new Block(
+    1,
+    timestamp,
+    createRegistrationData(),
+    "previous-hash"
+  );
+
+  const result = block.mineBlock(1);
+
+  assert.equal(result, block);
+  assert.ok(block.hash.startsWith("0"));
+  assert.equal(block.hash, block.calculateHash());
+});
+
+test("mines blocks at difficulties 1 through 3", () => {
+  for (const difficulty of [1, 2, 3]) {
+    const block = new Block(
+      difficulty,
+      timestamp,
+      createRegistrationData(),
+      "previous-hash"
+    );
+
+    block.mineBlock(difficulty);
+
+    assert.ok(
+      block.hash.startsWith("0".repeat(difficulty)),
+      `Expected difficulty ${difficulty}, received ${block.hash}`
+    );
+
+    assert.equal(block.hash, block.calculateHash());
+  }
+});
+
+test("updates the nonce while mining", () => {
+  const block = new Block(
+    1,
+    timestamp,
+    createRegistrationData(),
+    "previous-hash"
+  );
+
+  const originalNonce = block.nonce;
+
+  block.mineBlock(2);
+
+  assert.ok(block.nonce >= originalNonce);
+  assert.ok(block.hash.startsWith("00"));
+});
+
+test("rejects invalid mining difficulties", () => {
+  const invalidDifficulties = [
+    0,
+    -1,
+    1.5,
+    7,
+    "2",
+    null,
+  ];
+
+  for (const difficulty of invalidDifficulties) {
+    const block = new Block(
+      1,
+      timestamp,
+      createRegistrationData(),
+      "previous-hash"
+    );
+
+    assert.throws(
+      () => block.mineBlock(difficulty),
+      /difficulty must be an integer between 1 and 6/i
+    );
+  }
+});
