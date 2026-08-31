@@ -35,22 +35,101 @@ export class Blockchain {
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
   }
-
-  addTransaction(transaction) {
-    if (
-      transaction === null ||
-      typeof transaction !== "object" ||
-      Array.isArray(transaction)
-    ) {
+  normalizeTransaction(input) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
       throw new TypeError("Transaction must be an object");
     }
 
-    const storedTransaction = structuredClone(transaction);
+    const {
+      serialNumber,
+      action,
+      fromAddress = null,
+      toAddress,
+      timestamp,
+    } = input;
 
-    deepFreeze(storedTransaction);
-    this.pendingTransactions.push(storedTransaction);
+    if (typeof serialNumber !== "string" || !serialNumber.trim()) {
+      throw new TypeError("serialNumber is required");
+    }
 
-    return storedTransaction;
+    if (!["REGISTER", "TRANSFER"].includes(action)) {
+      throw new TypeError("action must be REGISTER or TRANSFER");
+    }
+
+    if (typeof toAddress !== "string" || !toAddress.trim()) {
+      throw new TypeError("toAddress is required");
+    }
+
+    if (!Number.isInteger(timestamp) || timestamp <= 0) {
+      throw new TypeError("timestamp must be a positive integer");
+    }
+
+    let normalizedFromAddress = null;
+
+    if (fromAddress !== null) {
+      if (typeof fromAddress !== "string" || !fromAddress.trim()) {
+        throw new TypeError("fromAddress must be null or a non-empty string");
+      }
+
+      normalizedFromAddress = fromAddress.trim();
+    }
+
+    if (action === "TRANSFER" && normalizedFromAddress === null) {
+      throw new TypeError("fromAddress is required for TRANSFER");
+    }
+
+    return {
+      serialNumber: serialNumber.trim(),
+      action,
+      fromAddress: normalizedFromAddress,
+      toAddress: toAddress.trim(),
+      timestamp,
+    };
+  }
+
+  validateStateTransition(transaction) {
+    const state = this.getProductState(transaction.serialNumber, true);
+
+    if (transaction.action === "REGISTER") {
+      if (state !== null) {
+        throw new Error(
+          `Product ${transaction.serialNumber} is already registered`,
+        );
+      }
+
+      if (transaction.fromAddress !== null) {
+        throw new Error("REGISTER transaction must have fromAddress = null");
+      }
+
+      return true;
+    }
+
+    if (state === null) {
+      throw new Error(`Product ${transaction.serialNumber} does not exist`);
+    }
+
+    if (state.currentOwner !== transaction.fromAddress) {
+      throw new Error(
+        `Transfer rejected. ${transaction.fromAddress} is not the current owner`,
+      );
+    }
+
+    if (transaction.fromAddress === transaction.toAddress) {
+      throw new Error("fromAddress and toAddress cannot be identical");
+    }
+
+    return true;
+  }
+
+  addTransaction(input) {
+    const transaction = this.normalizeTransaction(input);
+
+    this.validateStateTransition(transaction);
+
+    deepFreeze(transaction);
+    this.pendingTransactions.push(transaction);
+
+    return transaction;
   }
 
   minePendingTransactions(timestamp = Date.now()) {
@@ -142,6 +221,47 @@ export class Blockchain {
     return block;
   }
 
+  isStateHistoryValid() {
+    const owners = new Map();
+
+    for (const block of this.chain.slice(1)) {
+      for (const rawTransaction of block.data) {
+        let transaction;
+
+        try {
+          transaction = this.normalizeTransaction(rawTransaction);
+        } catch {
+          return false;
+        }
+
+        if (transaction.action === "REGISTER") {
+          if (
+            owners.has(transaction.serialNumber) ||
+            transaction.fromAddress !== null
+          ) {
+            return false;
+          }
+
+          owners.set(transaction.serialNumber, transaction.toAddress);
+
+          continue;
+        }
+
+        if (
+          !owners.has(transaction.serialNumber) ||
+          owners.get(transaction.serialNumber) !== transaction.fromAddress ||
+          transaction.fromAddress === transaction.toAddress
+        ) {
+          return false;
+        }
+
+        owners.set(transaction.serialNumber, transaction.toAddress);
+      }
+    }
+
+    return true;
+  }
+
   isChainValid() {
     const target = "0".repeat(this.difficulty);
 
@@ -171,6 +291,6 @@ export class Blockchain {
       }
     }
 
-    return true;
+    return this.isStateHistoryValid();
   }
 }
