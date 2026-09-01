@@ -1,5 +1,6 @@
 import { Block } from "./Block.js";
 import { deepFreeze } from "../utils/deepFreeze.js";
+import { AppError } from "../errors/AppError.js";
 
 export class Blockchain {
   constructor(difficulty = 1) {
@@ -37,7 +38,7 @@ export class Blockchain {
   }
   normalizeTransaction(input) {
     if (input === null || typeof input !== "object" || Array.isArray(input)) {
-      throw new TypeError("Transaction must be an object");
+      throw new AppError("Transaction must be an object", 400);
     }
 
     const {
@@ -49,33 +50,36 @@ export class Blockchain {
     } = input;
 
     if (typeof serialNumber !== "string" || !serialNumber.trim()) {
-      throw new TypeError("serialNumber is required");
+      throw new AppError("serialNumber is required", 400);
     }
 
     if (!["REGISTER", "TRANSFER"].includes(action)) {
-      throw new TypeError("action must be REGISTER or TRANSFER");
+      throw new AppError("action must be REGISTER or TRANSFER", 400);
     }
 
     if (typeof toAddress !== "string" || !toAddress.trim()) {
-      throw new TypeError("toAddress is required");
+      throw new AppError("toAddress is required", 400);
     }
 
     if (!Number.isInteger(timestamp) || timestamp <= 0) {
-      throw new TypeError("timestamp must be a positive integer");
+      throw new AppError("timestamp must be a positive integer", 400);
     }
 
     let normalizedFromAddress = null;
 
     if (fromAddress !== null) {
       if (typeof fromAddress !== "string" || !fromAddress.trim()) {
-        throw new TypeError("fromAddress must be null or a non-empty string");
+        throw new AppError(
+          "fromAddress must be null or a non-empty string",
+          400,
+        );
       }
 
       normalizedFromAddress = fromAddress.trim();
     }
 
     if (action === "TRANSFER" && normalizedFromAddress === null) {
-      throw new TypeError("fromAddress is required for TRANSFER");
+      throw new AppError("fromAddress is required for TRANSFER", 400);
     }
 
     return {
@@ -87,35 +91,49 @@ export class Blockchain {
     };
   }
 
-  validateStateTransition(transaction) {
-    const state = this.getProductState(transaction.serialNumber, true);
+   validateStateTransition(transaction) {
+    const state = this.getProductState(
+      transaction.serialNumber,
+      true
+    );
 
     if (transaction.action === "REGISTER") {
       if (state !== null) {
-        throw new Error(
+        throw new AppError(
           `Product ${transaction.serialNumber} is already registered`,
+          422
         );
       }
 
       if (transaction.fromAddress !== null) {
-        throw new Error("REGISTER transaction must have fromAddress = null");
+        throw new AppError(
+          "REGISTER transaction must have fromAddress = null",
+          422
+        );
       }
 
       return true;
     }
 
     if (state === null) {
-      throw new Error(`Product ${transaction.serialNumber} does not exist`);
+      throw new AppError(
+        `Product ${transaction.serialNumber} does not exist`,
+        422
+      );
     }
 
     if (state.currentOwner !== transaction.fromAddress) {
-      throw new Error(
+      throw new AppError(
         `Transfer rejected. ${transaction.fromAddress} is not the current owner`,
+        422
       );
     }
 
     if (transaction.fromAddress === transaction.toAddress) {
-      throw new Error("fromAddress and toAddress cannot be identical");
+      throw new AppError(
+        "fromAddress and toAddress cannot be identical",
+        422
+      );
     }
 
     return true;
@@ -134,10 +152,16 @@ export class Blockchain {
 
   minePendingTransactions(timestamp = Date.now()) {
     if (this.pendingTransactions.length === 0) {
-      throw new Error("There are no pending transactions to mine");
+      throw new AppError(
+        "There are no pending transactions to mine",
+        422
+      );
     }
 
-    const block = this.addBlock(this.pendingTransactions, timestamp);
+    const block = this.addBlock(
+      this.pendingTransactions,
+      timestamp
+    );
 
     this.pendingTransactions = [];
 

@@ -277,3 +277,56 @@ test("detects unauthorized transfer in mined history", () => {
   assert.equal(blockchain.isStateHistoryValid(), false);
   assert.equal(blockchain.isChainValid(), false);
 });
+
+test("uses status 400 for malformed transactions", () => {
+  const blockchain = new Blockchain(1);
+
+  assert.throws(
+    () =>
+      blockchain.addTransaction(
+        createRegistration({ serialNumber: "" })
+      ),
+    (error) => {
+      assert.equal(error.statusCode, 400);
+      assert.match(
+        error.message,
+        /serialNumber is required/
+      );
+
+      return true;
+    }
+  );
+});
+
+test("uses status 422 for invalid state transitions", () => {
+  const blockchain = new Blockchain(1);
+
+  blockchain.addTransaction(createRegistration());
+
+  assert.throws(
+    () => blockchain.addTransaction(createRegistration()),
+    (error) => {
+      assert.equal(error.statusCode, 422);
+      assert.match(error.message, /already registered/);
+
+      return true;
+    }
+  );
+});
+
+test("uses status 422 when mining an empty pool", () => {
+  const blockchain = new Blockchain(1);
+
+  assert.throws(
+    () => blockchain.minePendingTransactions(),
+    (error) => {
+      assert.equal(error.statusCode, 422);
+      assert.match(
+        error.message,
+        /no pending transactions to mine/i
+      );
+
+      return true;
+    }
+  );
+});
